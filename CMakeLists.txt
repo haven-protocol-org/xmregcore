@@ -17,8 +17,8 @@ include(MyUtils)
 
 find_package(Monero)
 
-#add_executable(${PROJECT_NAME}
-#        example.cpp)
+add_executable(${PROJECT_NAME}
+        example.cpp)
 
 add_subdirectory(src/)
 
