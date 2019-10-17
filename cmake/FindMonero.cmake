@@ -68,7 +68,8 @@ set(LIBS  cryptonote_core
           epee
           checkpoints
           version
-          cncrypto)
+          cncrypto
+          offshore)
 
 set(Xmr_INCLUDE_DIRS "${CPP_MONERO_DIR}")
 
