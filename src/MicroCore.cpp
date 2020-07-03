@@ -198,10 +198,26 @@ MicroCore::get_mempool_txs(
         std::vector<tx_info>& tx_infos,
         std::vector<spent_key_image_info>& key_image_infos) const
 {
+
     return m_mempool.get_transactions_and_spent_keys_info(
                 tx_infos, key_image_infos);
 }
 
+bool
+MicroCore::get_mempool_txs(
+        std::vector<transaction>& txs) const
+{
+  try
+  {
+      m_mempool.get_transactions(txs);
+      return true;
+  }
+  catch (std::exception const& e)
+  {
+      std::cerr << e.what() << std::endl;
+      return false;
+  }
+}
 
 uint64_t
 MicroCore::get_current_blockchain_height() const
@@ -279,9 +295,31 @@ MicroCore::get_tx(crypto::hash const& tx_hash, transaction& tx) const
     if (core_storage.have_tx(tx_hash))
     {
         // get transaction with given hash
-        tx = core_storage.get_db().get_tx(tx_hash);
-        return true;
+        try
+        {
+            tx = core_storage.get_db().get_tx(tx_hash);
+        }
+        catch (TX_DNE const& e)
+        {
+            try 
+            {
+                // coinbase txs are not considered pruned
+                tx = core_storage.get_db().get_pruned_tx(tx_hash);
+                return true;
+            }
+            catch (TX_DNE const& e)
+            {
+                cerr << "MicroCore::get_tx: " << e.what() << endl;
+            }
+
+            return false;
+        }
     }
+    else
+    {
+        cerr << "MicroCore::get_tx tx does not exist in blockchain: " << tx_hash << endl;
+        return false;
+    }     
 
     return true;
 }
