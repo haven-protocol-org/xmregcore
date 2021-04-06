@@ -80,8 +80,8 @@ set(LIBS  cryptonote_core
           checkpoints
           version
           cncrypto
-          randomx
           hardforks
+          offshore
           miniupnpc)
 
 set(Xmr_INCLUDE_DIRS "${CPP_MONERO_DIR}")
