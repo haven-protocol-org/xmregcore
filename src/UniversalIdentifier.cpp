@@ -117,14 +117,28 @@ Output::identify(transaction const& tx,
 
     for (auto i = 0u; i < tx.vout.size(); ++i)
     {
+        crypto::public_key txout_key;
+        std::string asset_type;
+        bool offshore = false;
+        bool xasset = false;
+
         // i will act as output indxes in the tx
+        const auto &o = tx.vout[i];
 
-        if (tx.vout[i].target.type() != typeid(txout_to_key))
+        if (o.target.type() == typeid(cryptonote::txout_to_key)) {
+            txout_key = boost::get<txout_to_key>(o.target).key;
+            asset_type = "XHV";
+        } else if (o.target.type() == typeid(cryptonote::txout_offshore)) {
+            txout_key = boost::get<txout_offshore>(o.target).key;
+            asset_type = "XUSD";
+            offshore = true;
+        } else if (o.target.type() == typeid(cryptonote::txout_xasset)) {
+            txout_key = boost::get<txout_xasset>(o.target).key;
+            asset_type = boost::get<txout_xasset>(o.target).asset_type;
+            xasset = true;
+        } else {
             continue;
-
-        // get tx input key
-        txout_to_key const& txout_key
-                = boost::get<txout_to_key>(tx.vout[i].target);
+        }
 
         uint64_t amount = tx.vout[i].amount;
 
@@ -146,7 +160,7 @@ Output::identify(transaction const& tx,
         std::unique_ptr<subaddress_index> subaddr_idx;
 
         hwdev.derive_subaddress_public_key(
-					txout_key.key, derivation, i, 
+					txout_key, derivation, i, 
 					subaddress_spendkey);
 
         // this derivation is going to be saved 
@@ -185,7 +199,7 @@ Output::identify(transaction const& tx,
         {
             // check for output using additional tx public keys
 	    	hwdev.derive_subaddress_public_key(
-						txout_key.key, additional_derivations[i], 
+						txout_key, additional_derivations[i], 
 						i, 
 						subaddress_spendkey);
 	    
@@ -211,9 +225,9 @@ Output::identify(transaction const& tx,
         rct::key rtc_mask {0};
         rct::key rtc_amount {0};
 
-        // if mine output has RingCT, i.e., tx version is 2
+        // if mine output has RingCT, i.e., tx version is >= 2
         // need to decode its amount. otherwise its zero.
-        if (mine_output && tx.version == 2)
+        if (mine_output && tx.version >= 2)
         {
             // initialize with regular amount value
             // for ringct, except coinbase, it will be 0
@@ -232,8 +246,8 @@ Output::identify(transaction const& tx,
                 // go to CurrentBlockchainStatus::construct_output_rct_field
                 // to see how we deal with coinbase ringct that are used
                 // as mixins
-
-                rtc_outpk = tx.rct_signatures.outPk[i].mask;
+                rtc_outpk = offshore ? tx.rct_signatures.outPk_usd[i].mask :
+                    xasset ? tx.rct_signatures.outPk_xasset[i].mask : tx.rct_signatures.outPk[i].mask;
                 rtc_mask = tx.rct_signatures.ecdhInfo[i].mask;
                 rtc_amount = tx.rct_signatures.ecdhInfo[i].amount;
 
@@ -260,7 +274,7 @@ Output::identify(transaction const& tx,
 
             } // if (!tx_is_coinbase)
 
-        } // if (mine_output && tx.version == 2)
+        } // if (mine_output && tx.version >= 2)
 
         if (mine_output)
         {
@@ -268,7 +282,7 @@ Output::identify(transaction const& tx,
 
             identified_outputs.emplace_back(
                     info{
-                        txout_key.key, amount, i, 
+                        txout_key, amount, asset_type, i, 
                         derivation_to_save,
                         rtc_outpk, rtc_mask, rtc_amount,
                         subaddress_spendkey
@@ -328,7 +342,8 @@ Output::decode_ringct(rct::rctSig const& rv,
             case rct::RCTTypeSimple:
             case rct::RCTTypeBulletproof:
             case rct::RCTTypeBulletproof2:
-            case rct::RCTTypeCLSAG:    
+            case rct::RCTTypeCLSAG:
+            case rct::RCTTypeCLSAGN:    
                 amount = rct::decodeRctSimple(rv,
                                               rct::sk2rct(scalar1),
                                               i,
@@ -372,18 +387,37 @@ void Input::identify(transaction const& tx,
 
      for (auto i = 0u; i < input_no; ++i)
      {
-         if(tx.vin[i].type() != typeid(txin_to_key))
-             continue;
+        // get tx input key
+        const auto &in = tx.vin[i];
 
-         // get tx input key
-         txin_to_key const& in_key
-                 = boost::get<txin_to_key>(tx.vin[i]);
+        crypto::key_image k_image;
+        uint64_t amount;
+        std::vector<uint64_t> key_offsets;
+
+        if (in.type() == typeid(cryptonote::txin_to_key)) {
+            k_image = boost::get<cryptonote::txin_to_key>(in).k_image;
+            amount = boost::get<cryptonote::txin_to_key>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_to_key>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_offshore)) {
+            k_image = boost::get<cryptonote::txin_offshore>(in).k_image;
+            amount = boost::get<cryptonote::txin_offshore>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_offshore>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_onshore)) {
+            k_image = boost::get<cryptonote::txin_onshore>(in).k_image;
+            amount = boost::get<cryptonote::txin_onshore>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_onshore>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_xasset)) {
+            k_image = boost::get<cryptonote::txin_xasset>(in).k_image;
+            amount = boost::get<cryptonote::txin_xasset>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_xasset>(in).key_offsets;
+        } else {
+            continue;
+        }
 
          // get absolute offsets of mixins
          vector<uint64_t> absolute_offsets
-                 = relative_output_offsets_to_absolute(
-                         in_key.key_offsets);
-
+                 = relative_output_offsets_to_absolute(key_offsets);
+        
          // get public keys of outputs used in the mixins that
          // match to the offests
          vector<output_data_t> mixin_outputs;
@@ -392,7 +426,7 @@ void Input::identify(transaction const& tx,
          // check if we are not trying to get the outputs
          // with non-existing offsets
 
-         auto num_outputs = mcore->get_num_outputs(in_key.amount);
+         auto num_outputs = mcore->get_num_outputs(amount);
 
          if (absolute_offsets.back() >= num_outputs)
          {
@@ -404,7 +438,7 @@ void Input::identify(transaction const& tx,
 
          // this can THROW if no outputs are found
          // but previous check should prevent this
-         mcore->get_output_key(in_key.amount,
+         mcore->get_output_key(amount,
                                absolute_offsets,
                                mixin_outputs);
 
@@ -430,7 +464,7 @@ void Input::identify(transaction const& tx,
                  // save it into identified_inputs vector
 
                  identified_inputs.push_back(info {
-                         in_key.k_image,
+                         k_image,
                          it->second, // amount
                          output_data.pubkey});
 
@@ -532,17 +566,37 @@ GuessInput::identify(transaction const& tx,
            
     for (auto i = 0u; i < input_no; ++i)
     {
-        if(tx.vin[i].type() != typeid(txin_to_key))
-            continue;
-
         // get tx input key
-        txin_to_key const& in_key
-                = boost::get<cryptonote::txin_to_key>(tx.vin[i]);
+        const auto &in = tx.vin[i];
+
+        crypto::key_image k_image;
+        uint64_t amount;
+        std::vector<uint64_t> key_offsets;
+
+        if (in.type() == typeid(cryptonote::txin_to_key)) {
+            k_image = boost::get<cryptonote::txin_to_key>(in).k_image;
+            amount = boost::get<cryptonote::txin_to_key>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_to_key>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_offshore)) {
+            k_image = boost::get<cryptonote::txin_offshore>(in).k_image;
+            amount = boost::get<cryptonote::txin_offshore>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_offshore>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_onshore)) {
+            k_image = boost::get<cryptonote::txin_onshore>(in).k_image;
+            amount = boost::get<cryptonote::txin_onshore>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_onshore>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_xasset)) {
+            k_image = boost::get<cryptonote::txin_xasset>(in).k_image;
+            amount = boost::get<cryptonote::txin_xasset>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_xasset>(in).key_offsets;
+        } else {
+            continue;
+        }
 
         // get absolute offsets of mixins
         auto absolute_offsets
                 = relative_output_offsets_to_absolute(
-                        in_key.key_offsets);
+                        key_offsets);
 
         //tx_out_index is pair::<transaction hash, output index>
         vector<tx_out_index> indices;
@@ -551,7 +605,7 @@ GuessInput::identify(transaction const& tx,
         // given outputs of mixins
         //  this cant THROW DB_EXCEPTION
         mcore->get_output_tx_and_index(
-                    in_key.amount, absolute_offsets, indices);
+                    amount, absolute_offsets, indices);
 
         // for each found mixin tx, check if any key image
         // generated using our outputs in the mixin tx
@@ -634,18 +688,37 @@ void RealInput::identify(transaction const& tx,
 
      for (auto i = 0u; i < input_no; ++i)
      {
-         if(tx.vin[i].type() != typeid(txin_to_key))
-             continue;
+        // get tx input key
+        const auto &in = tx.vin[i];
 
-         // get tx input key
-         txin_to_key const& in_key
-                 = boost::get<cryptonote::txin_to_key>(tx.vin[i]);
+        crypto::key_image k_image;
+        uint64_t amount;
+        std::vector<uint64_t> key_offsets;
+
+        if (in.type() == typeid(cryptonote::txin_to_key)) {
+            k_image = boost::get<cryptonote::txin_to_key>(in).k_image;
+            amount = boost::get<cryptonote::txin_to_key>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_to_key>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_offshore)) {
+            k_image = boost::get<cryptonote::txin_offshore>(in).k_image;
+            amount = boost::get<cryptonote::txin_offshore>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_offshore>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_onshore)) {
+            k_image = boost::get<cryptonote::txin_onshore>(in).k_image;
+            amount = boost::get<cryptonote::txin_onshore>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_onshore>(in).key_offsets;
+        } else if (in.type() == typeid(cryptonote::txin_xasset)) {
+            k_image = boost::get<cryptonote::txin_xasset>(in).k_image;
+            amount = boost::get<cryptonote::txin_xasset>(in).amount;
+            key_offsets = boost::get<cryptonote::txin_xasset>(in).key_offsets;
+        } else {
+            continue;
+        }
 
          // get absolute offsets of mixins
          auto absolute_offsets
                  = relative_output_offsets_to_absolute(
-                         in_key.key_offsets);
-
+                         key_offsets);
 
          //tx_out_index is pair::<transaction hash, output index>
          vector<tx_out_index> indices;
@@ -654,7 +727,7 @@ void RealInput::identify(transaction const& tx,
          // given outputs of mixins
          //  this cant THROW DB_EXCEPTION
          mcore->get_output_tx_and_index(
-                     in_key.amount, absolute_offsets, indices);
+                     amount, absolute_offsets, indices);
 
          // placeholder for information about key image that
          // we will find as ours
@@ -752,7 +825,7 @@ void RealInput::identify(transaction const& tx,
 
                 // now check if current key image in the tx which we
                 // analyze matches generated key image
-                if (in_key.k_image == key_img_generated)
+                if (k_image == key_img_generated)
                 {
                     // this is our key image if they are equal!
                     key_image_info.reset(new info {key_img_generated,
