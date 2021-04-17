@@ -96,6 +96,7 @@ public:
     {
         public_key pub_key;
         uint64_t   amount;
+        string     asset_type;
         uint64_t   idx_in_tx;
         key_derivation derivation;
         rct::key   rtc_outpk;
