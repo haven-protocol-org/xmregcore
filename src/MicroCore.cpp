@@ -200,7 +200,7 @@ MicroCore::get_mempool_txs(
 {
 
     return m_mempool.get_transactions_and_spent_keys_info(
-                tx_infos, key_image_infos, true);
+                tx_infos, key_image_infos);
 }
 
 bool
