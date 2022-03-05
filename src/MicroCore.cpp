@@ -186,7 +186,7 @@ MicroCore::get_hard_fork_version(uint64_t height) const
     return core_storage.get_hard_fork_version(height);
 }
 
-std::vector<uint64_t>
+std::vector<std::pair<uint64_t, uint64_t>> 
 MicroCore::get_tx_amount_output_indices(uint64_t tx_id) const
 {
     return core_storage.get_db()
