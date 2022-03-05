@@ -70,7 +70,7 @@ set(LIBS  cryptonote_core
           #cryptonote_protocol
           cryptonote_basic
           #daemonizer
-          blocks
+          #blocks
           lmdb
           ringct
           ringct_basic
