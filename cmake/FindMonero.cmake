@@ -82,6 +82,7 @@ set(LIBS  cryptonote_core
           checkpoints
           version
           cncrypto
+          randomx
           hardforks
           offshore)
 
