@@ -246,8 +246,18 @@ Output::identify(transaction const& tx,
                 // go to CurrentBlockchainStatus::construct_output_rct_field
                 // to see how we deal with coinbase ringct that are used
                 // as mixins
-                rtc_outpk = offshore ? tx.rct_signatures.outPk_usd[i].mask :
+
+                // check for Haven2 fork or rct type Haven2
+                if (tx.rct_signatures.type == rct::RCTTypeHaven2) 
+                {
+                    rtc_outpk = tx.rct_signatures.outPk[i].mask;
+                }
+                else 
+                {
+                    rtc_outpk = offshore ? tx.rct_signatures.outPk_usd[i].mask :
                     xasset ? tx.rct_signatures.outPk_xasset[i].mask : tx.rct_signatures.outPk[i].mask;
+                }
+                
                 rtc_mask = tx.rct_signatures.ecdhInfo[i].mask;
                 rtc_amount = tx.rct_signatures.ecdhInfo[i].amount;
 
@@ -344,6 +354,7 @@ Output::decode_ringct(rct::rctSig const& rv,
             case rct::RCTTypeBulletproof2:
             case rct::RCTTypeCLSAG:
             case rct::RCTTypeCLSAGN:    
+            case rct::RCTTypeHaven2:
                 amount = rct::decodeRctSimple(rv,
                                               rct::sk2rct(scalar1),
                                               i,

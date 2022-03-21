@@ -140,7 +140,7 @@ public:
     virtual uint64_t
     get_tx_block_height(crypto::hash const& tx_hash) const;
 
-    virtual std::vector<uint64_t>
+    virtual std::vector<std::pair<uint64_t, uint64_t>>
     get_tx_amount_output_indices(uint64_t tx_id) const;
 
     virtual bool
